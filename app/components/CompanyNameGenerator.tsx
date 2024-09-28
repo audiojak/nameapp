@@ -1,8 +1,9 @@
 'use client';
 
-import { useState } from 'react';
-import { Button, Input, VStack, Heading, Text, List, ListItem, HStack, IconButton, Box, UnorderedList, Select, Textarea } from '@chakra-ui/react';
+import { useState, useEffect } from 'react';
+import { Button, VStack, Heading, Text, List, ListItem, HStack, IconButton, Box, UnorderedList, Select, Textarea, Input } from '@chakra-ui/react';
 import { AddIcon, DeleteIcon } from '@chakra-ui/icons';
+import { testData } from '../testData';
 
 type FormField = 'attributes' | 'keyMessages' | 'values' | 'stories' | 'vision' | 'tagline';
 
@@ -52,6 +53,7 @@ const fieldDescriptions: Record<FormField, { description: string; questions: str
 };
 
 const industries = [
+  'Software', // Added Software as the first item
   'Technology', 'Healthcare', 'Finance', 'Education', 'Retail', 'Manufacturing', 'Entertainment',
   'Food and Beverage', 'Travel and Hospitality', 'Real Estate', 'Energy', 'Automotive', 'Agriculture',
   'Telecommunications', 'Media', 'Fashion', 'Sports', 'Non-Profit', 'Environmental', 'Legal Services',
@@ -68,9 +70,28 @@ const CompanyNameGenerator = () => {
     vision: [''],
     tagline: [''],
   });
-  const [industry, setIndustry] = useState('');
-  const [generatedNames, setGeneratedNames] = useState<string[]>([]);
+  const [industry, setIndustry] = useState('Software'); // Set default to 'Software'
+  const [generatedNames, setGeneratedNames] = useState<Record<string, string[]>>({});
   const [isLoading, setIsLoading] = useState(false);
+  const [debugMode, setDebugMode] = useState(false);
+  const [debugInfo, setDebugInfo] = useState<{ prompt?: string; response?: string }>({});
+  const [openAIKey, setOpenAIKey] = useState('');
+  const [isEnvironmentKeyAvailable, setIsEnvironmentKeyAvailable] = useState(true);
+
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    setDebugMode(urlParams.get('debug') === 'true');
+  }, []);
+
+  useEffect(() => {
+    const checkEnvironmentKey = async () => {
+      const response = await fetch('/api/check-openai-key');
+      const { isAvailable } = await response.json();
+      setIsEnvironmentKeyAvailable(isAvailable);
+    };
+
+    checkEnvironmentKey();
+  }, []);
 
   const handleInputChange = (field: FormField, index: number, value: string) => {
     setFormData((prevData) => ({
@@ -96,44 +117,88 @@ const CompanyNameGenerator = () => {
   const generateNames = async () => {
     setIsLoading(true);
     try {
-      const response = await fetch('/api/generate-names', {
+      const response = await fetch(`/api/generate-names${debugMode ? '?debug=true' : ''}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'X-OpenAI-Key': !isEnvironmentKeyAvailable ? openAIKey : ''
+        },
         body: JSON.stringify({ ...formData, industry }),
       });
-      const data = await response.json();
-      setGeneratedNames(data.names);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      const text = await response.text();
+      console.log('Raw response text:', text);
+      
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch (e) {
+        console.error('Error parsing JSON:', e);
+        throw new Error('Invalid JSON response from server');
+      }
+      
+      console.log('API Response:', data);
+
+      if (data.names && typeof data.names === 'object') {
+        console.log('Generated Names:', data.names);
+        setGeneratedNames(data.names);
+      } else {
+        console.error('Unexpected response format:', data);
+        setGeneratedNames({});
+      }
+      if (debugMode) {
+        setDebugInfo({ prompt: data.prompt, response: data.rawResponse });
+      }
     } catch (error) {
       console.error('Error generating names:', error);
+      setGeneratedNames({});
+    } finally {
+      setIsLoading(false);
     }
-    setIsLoading(false);
+  };
+
+  const loadTestData = () => {
+    setIndustry(testData.industry);
+    setFormData({
+      attributes: testData.attributes,
+      keyMessages: testData.keyMessages,
+      values: testData.values,
+      stories: testData.stories,
+      vision: testData.vision,
+      tagline: testData.tagline,
+    });
   };
 
   const renderInputs = (field: FormField, label: string) => (
-    <VStack align="stretch" key={field} spacing={4}>
+    <VStack align="stretch" key={field} spacing={4} width="100%">
       <Heading size="sm">{label}</Heading>
-      <Text fontSize="sm">{fieldDescriptions[field].description}</Text>
+      <Text fontSize="sm">{fieldDescriptions[field]?.description || ''}</Text>
       <UnorderedList spacing={2} pl={4}>
-        {fieldDescriptions[field].questions.map((question, index) => (
+        {fieldDescriptions[field]?.questions?.map((question, index) => (
           <ListItem key={index}>{question}</ListItem>
-        ))}
+        )) || null}
       </UnorderedList>
-      {formData[field].map((value, index) => (
-        <HStack key={`${field}-${index}`}>
+      {formData[field]?.map((value, index) => (
+        <HStack key={`${field}-${index}`} width="100%">
           <Textarea
             value={value}
             onChange={(e) => handleInputChange(field, index, e.target.value)}
             placeholder={`${label} ${index + 1}`}
             minHeight="100px"
+            width="100%"
           />
           <IconButton
             aria-label="Remove field"
             icon={<DeleteIcon />}
             onClick={() => removeField(field, index)}
-            isDisabled={formData[field].length === 1}
+            isDisabled={formData[field]?.length === 1}
           />
         </HStack>
-      ))}
+      )) || null}
       <Button leftIcon={<AddIcon />} onClick={() => addField(field)} size="sm">
         Add {label}
       </Button>
@@ -141,14 +206,30 @@ const CompanyNameGenerator = () => {
   );
 
   return (
-    <VStack spacing={12} align="stretch" width="100%" maxWidth="800px" margin="auto" p={4}>
+    <VStack spacing={12} align="stretch" width="100%" maxWidth="1000px" margin="auto" p={4}>
       <Heading>Company Name Generator</Heading>
+      {!isEnvironmentKeyAvailable && (
+        <Box width="100%">
+          <Text mb={2}>OpenAI API Key:</Text>
+          <Input
+            type="password"
+            value={openAIKey}
+            onChange={(e) => setOpenAIKey(e.target.value)}
+            placeholder="Enter your OpenAI API key"
+            width="100%"
+            size="lg"
+          />
+        </Box>
+      )}
+      <Button onClick={loadTestData} colorScheme="teal" size="md">
+        Load Test Data
+      </Button>
       <Box>
         <Heading size="sm">Industry</Heading>
         <Select
-          placeholder="Select industry"
           value={industry}
           onChange={(e) => setIndustry(e.target.value)}
+          icon={<></>}
         >
           {industries.map((ind) => (
             <option key={ind} value={ind}>
@@ -178,15 +259,44 @@ const CompanyNameGenerator = () => {
       <Button onClick={generateNames} isLoading={isLoading} colorScheme="blue" size="lg">
         Generate Names
       </Button>
-      {generatedNames.length > 0 && (
+      {Object.keys(generatedNames).length > 0 && (
         <>
           <Heading size="md">Generated Names:</Heading>
-          <List spacing={2}>
-            {generatedNames.map((name, index) => (
-              <ListItem key={index}>{name}</ListItem>
-            ))}
-          </List>
+          {Object.entries(generatedNames).map(([category, names]) => (
+            <Box key={category} mt={4}>
+              <Heading size="sm">{category}</Heading>
+              <List spacing={2}>
+                {names.map((name, index) => (
+                  <ListItem key={index}>{name}</ListItem>
+                ))}
+              </List>
+            </Box>
+          ))}
         </>
+      )}
+      {debugMode && debugInfo.prompt && (
+        <Box width="100%">
+          <Heading size="md" mb={4}>Debug Information</Heading>
+          <Text fontWeight="bold" mb={2}>Prompt:</Text>
+          <Textarea 
+            value={debugInfo.prompt} 
+            isReadOnly 
+            height="300px" 
+            width="100%" 
+            mb={4}
+            fontSize="sm"
+            fontFamily="monospace"
+          />
+          <Text fontWeight="bold" mb={2}>Raw Response:</Text>
+          <Textarea 
+            value={debugInfo.response} 
+            isReadOnly 
+            height="300px" 
+            width="100%"
+            fontSize="sm"
+            fontFamily="monospace"
+          />
+        </Box>
       )}
     </VStack>
   );
