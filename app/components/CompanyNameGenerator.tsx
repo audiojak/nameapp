@@ -1,8 +1,9 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Button, VStack, Heading, Text, List, ListItem, HStack, IconButton, Box, UnorderedList, Select, Textarea, Input } from '@chakra-ui/react';
-import { AddIcon, DeleteIcon } from '@chakra-ui/icons';
+import { Button, VStack, Heading, Text, List, ListItem, HStack, IconButton, Box, UnorderedList, Select, Textarea, Input, useColorModeValue } from '@chakra-ui/react';
+import { AddIcon, DeleteIcon, ChevronUpIcon, ChevronDownIcon } from '@chakra-ui/icons';
+import { FaThumbsUp, FaThumbsDown } from 'react-icons/fa';
 import { testData } from '../testData';
 
 type FormField = 'attributes' | 'keyMessages' | 'values' | 'stories' | 'vision' | 'tagline';
@@ -77,6 +78,7 @@ const CompanyNameGenerator = () => {
   const [debugInfo, setDebugInfo] = useState<{ prompt?: string; response?: string }>({});
   const [openAIKey, setOpenAIKey] = useState('');
   const [isEnvironmentKeyAvailable, setIsEnvironmentKeyAvailable] = useState(true);
+  const [rejectedNames, setRejectedNames] = useState<string[]>([]);
 
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
@@ -114,6 +116,18 @@ const CompanyNameGenerator = () => {
     }));
   };
 
+  const handleNameRejection = (name: string, category: string) => {
+    // Add to rejected names
+    setRejectedNames(prev => [...prev, name]);
+
+    // Remove from generated names
+    setGeneratedNames(prev => {
+      const updatedNames = { ...prev };
+      updatedNames[category] = updatedNames[category].filter(n => n !== name);
+      return updatedNames;
+    });
+  };
+
   const generateNames = async () => {
     setIsLoading(true);
     try {
@@ -123,7 +137,7 @@ const CompanyNameGenerator = () => {
           'Content-Type': 'application/json',
           'X-OpenAI-Key': !isEnvironmentKeyAvailable ? openAIKey : ''
         },
-        body: JSON.stringify({ ...formData, industry }),
+        body: JSON.stringify({ ...formData, industry, rejectedNames }),
       });
       
       if (!response.ok) {
@@ -173,6 +187,9 @@ const CompanyNameGenerator = () => {
     });
   };
 
+  const evenRowBg = useColorModeValue('white', 'gray.800');
+  const oddRowBg = useColorModeValue('gray.100', 'gray.700');
+
   const renderInputs = (field: FormField, label: string) => (
     <VStack align="stretch" key={field} spacing={4} width="100%">
       <Heading size="sm">{label}</Heading>
@@ -203,6 +220,40 @@ const CompanyNameGenerator = () => {
         Add {label}
       </Button>
     </VStack>
+  );
+
+  const renderName = (name: string, index: number, category: string) => (
+    <ListItem 
+      key={index}
+      bg={index % 2 === 0 ? evenRowBg : oddRowBg}
+      p={3}
+      borderRadius="md"
+      mb={2}
+      border="1px solid"
+      borderColor={useColorModeValue('gray.200', 'gray.600')}
+    >
+      <HStack spacing={4} alignItems="center" justifyContent="space-between">
+        <Text fontSize="lg" flex={1}>{name}</Text>
+        <HStack spacing={2}>
+          <IconButton
+            aria-label="Like name"
+            icon={<FaThumbsUp />}
+            size="md"
+            fontSize="20px"
+            colorScheme="green"
+            onClick={() => console.log(`Liked: ${name}`)}
+          />
+          <IconButton
+            aria-label="Dislike name"
+            icon={<FaThumbsDown />}
+            size="md"
+            fontSize="20px"
+            colorScheme="red"
+            onClick={() => handleNameRejection(name, category)}
+          />
+        </HStack>
+      </HStack>
+    </ListItem>
   );
 
   return (
@@ -264,15 +315,23 @@ const CompanyNameGenerator = () => {
           <Heading size="md">Generated Names:</Heading>
           {Object.entries(generatedNames).map(([category, names]) => (
             <Box key={category} mt={4}>
-              <Heading size="sm">{category}</Heading>
-              <List spacing={2}>
-                {names.map((name, index) => (
-                  <ListItem key={index}>{name}</ListItem>
-                ))}
+              <Heading size="sm" mb={2}>{category}</Heading>
+              <List spacing={0}>
+                {names.map((name, index) => renderName(name, index, category))}
               </List>
             </Box>
           ))}
         </>
+      )}
+      {rejectedNames.length > 0 && (
+        <Box>
+          <Heading size="sm">Rejected Names:</Heading>
+          <List spacing={2}>
+            {rejectedNames.map((name, index) => (
+              <ListItem key={index}>{name}</ListItem>
+            ))}
+          </List>
+        </Box>
       )}
       {debugMode && debugInfo.prompt && (
         <Box width="100%">

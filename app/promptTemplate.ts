@@ -5,12 +5,13 @@ export const generateNamesPrompt = (
   values: string[],
   stories: string[],
   vision: string[],
-  tagline: string[]
+  tagline: string[],
+  rejectedNames: string[]
 ) => {
   const formatField = (field: string[], label: string) => 
     `${label}:\n${field.map(item => `- ${item}`).join('\n')}`;
 
-  return `Generate company names based on the following communications framework:
+  let prompt = `Generate company names based on the following communications framework:
 
 Industry: ${industry}
 
@@ -111,4 +112,11 @@ Animal Names:
 
 
 Ensure all names are unique and relevant to the ${industry} industry.`;
+
+  if (rejectedNames.length > 0) {
+    prompt += `\n\nPlease avoid the following previously rejected names:
+${rejectedNames.map(name => `- ${name}`).join('\n')}`;
+  }
+
+  return prompt;
 };
