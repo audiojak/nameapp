@@ -178,7 +178,12 @@ const CompanyNameGenerator = () => {
       const text = await response.text();
       console.log('Raw response text:', text);
       
-      let data;
+      let data: {
+        names?: Record<string, string[]>;
+        prompt?: string;
+        rawResponse?: string;
+        error?: string;
+      };
       try {
         data = JSON.parse(text);
       } catch (e) {
@@ -193,8 +198,8 @@ const CompanyNameGenerator = () => {
         if (isGeneratingMore) {
           setGeneratedNames(prevNames => {
             const updatedNames = { ...prevNames };
-            Object.entries(data.names).forEach(([category, newNames]) => {
-              updatedNames[category] = [...(updatedNames[category] || []), ...(newNames as string[])];
+            Object.entries(data.names!).forEach(([category, newNames]) => {
+              updatedNames[category] = [...(updatedNames[category] || []), ...newNames];
             });
             return updatedNames;
           });

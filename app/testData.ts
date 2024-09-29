@@ -38,6 +38,7 @@ export const testData = {
     "developer",
     "Topic",
     "Flow",
+    "Talent",
   ],
   interestingWords: [
     "engage",
