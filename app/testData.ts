@@ -30,5 +30,20 @@ export const testData = {
   ],
   tagline: [
     "Find your top performing software engineers in minutes"
+  ],
+  excludedWords: [
+    "code",
+    "software",
+    "engineer",
+    "developer",
+    "product",
+    "team",
+    "company",
+    "startup",
+    "tech",
+  ],
+  interestingWords: [
+    "finch",
+    "engage",
   ]
 };

@@ -19,9 +19,9 @@ export async function POST(req: Request) {
     });
 
     const body = await req.json();
-    const { attributes, keyMessages, values, stories, vision, tagline, industry, rejectedNames } = body;
+    const { attributes, keyMessages, values, stories, vision, tagline, excludedWords, interestingWords, industry, rejectedNames, existingNames, generateMore } = body;
 
-    const prompt = generateNamesPrompt(industry, attributes, keyMessages, values, stories, vision, tagline, rejectedNames);
+    const prompt = generateNamesPrompt(industry, attributes, keyMessages, values, stories, vision, tagline, excludedWords, interestingWords, rejectedNames, existingNames, generateMore);
 
     const completion = await openai.chat.completions.create({
       model: 'gpt-4',

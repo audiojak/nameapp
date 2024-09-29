@@ -6,7 +6,11 @@ export const generateNamesPrompt = (
   stories: string[],
   vision: string[],
   tagline: string[],
-  rejectedNames: string[]
+  excludedWords: string[],
+  interestingWords: string[],
+  rejectedNames: string[],
+  existingNames: Record<string, string[]>,
+  generateMore: boolean
 ) => {
   const formatField = (field: string[], label: string) => 
     `${label}:\n${field.map(item => `- ${item}`).join('\n')}`;
@@ -52,21 +56,25 @@ Relevant questions:
 What is the impact you want to have in the world?
 How would you like to be remembered?
 
-Tagline is is where the brand vision comes to life. Your tagline should convey what you do in simple enough terms that someone can instantly know whether you sell what they're looking for. It needs to address the hidden "So What?" that every customer asks. Example: Nike's tagline is "Just do it."
+Tagline is where the brand vision comes to life. Your tagline should convey what you do in simple enough terms that someone can instantly know whether you sell what they're looking for. It needs to address the hidden "So What?" that every customer asks. Example: Nike's tagline is "Just do it."
 Relevant questions:
 What would you put on the side of a truck to tell people that you sell what they need?
 What words would someone google if they were looking for your type of products?
 
-Please provide 8 lists of 10 company names each, categorized as follows:
+Excluded Words: These are words that should not be used in the generated company names.
+${excludedWords.map(word => `- ${word}`).join('\n')}
+
+Interesting Words: These are words that could be interesting to include or consider in the generated company names.
+${interestingWords.map(word => `- ${word}`).join('\n')}
+
+${generateMore ? `Please generate 3 additional names for each category, ensuring they are different from the existing names.` : `Please provide 6 lists of 10 company names each, categorized as follows:`}
 
 1. Literal Names: Names that directly describe what the company does or its industry.
 2. Descriptive Names: Names that suggest the company's benefits or attributes.
 3. Abstract Names: Creative or metaphorical names that capture the essence of the brand.
 4. Combination Names: Names that combine two or more words to create a new meaning.
 5. Playful Names: Names that are funny, quirky, or have a playful tone.
-6. Ambiguous Names: Names that can be interpreted in multiple ways, leaving the audience to decide the meaning.
-7. Symbolic Names: Names that use symbols, icons, or emojis to represent the company or its industry.
-8. Animal Names: Names that use animals to represent the company or its industry.
+6. Animal Names: Animal names that are relevant to the company.
 
 Format your response as follows:
 
@@ -95,27 +103,22 @@ Playful Names:
 2. [Name]
 ...
 
-Ambiguous Names:
-1. [Name]
-2. [Name]
-...
-
-Symbolic Names:
-1. [Name]
-2. [Name]
-...
-
 Animal Names:
 1. [Name]
 2. [Name]
 ...
 
 
-Ensure all names are unique and relevant to the ${industry} industry.`;
+Ensure all names are unique and relevant to the ${industry} industry. Do not use any of the excluded words in the generated names. Consider incorporating or drawing inspiration from the interesting words when appropriate.`;
 
   if (rejectedNames.length > 0) {
     prompt += `\n\nPlease avoid the following previously rejected names:
 ${rejectedNames.map(name => `- ${name}`).join('\n')}`;
+  }
+
+  if (generateMore && Object.keys(existingNames).length > 0) {
+    prompt += `\n\nExisting names by category:
+${Object.entries(existingNames).map(([category, names]) => `${category}:\n${names.map(name => `- ${name}`).join('\n')}`).join('\n\n')}`;
   }
 
   return prompt;

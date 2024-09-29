@@ -1,12 +1,18 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Button, VStack, Heading, Text, List, ListItem, HStack, IconButton, Box, UnorderedList, Select, Textarea, Input, useColorModeValue } from '@chakra-ui/react';
+import { Button, VStack, Heading, Text, List, ListItem, HStack, IconButton, Box, UnorderedList, Select, Textarea, Input, useColorModeValue, Tooltip, Accordion, AccordionItem, AccordionButton, AccordionPanel, AccordionIcon } from '@chakra-ui/react';
 import { AddIcon, DeleteIcon, ChevronUpIcon, ChevronDownIcon } from '@chakra-ui/icons';
-import { FaThumbsUp, FaThumbsDown } from 'react-icons/fa';
+import { FaThumbsUp, FaThumbsDown, FaCheckCircle, FaTimesCircle, FaGlobe, FaQuestionCircle } from 'react-icons/fa';
 import { testData } from '../testData';
 
-type FormField = 'attributes' | 'keyMessages' | 'values' | 'stories' | 'vision' | 'tagline';
+type FormField = 'attributes' | 'keyMessages' | 'values' | 'stories' | 'vision' | 'tagline' | 'excludedWords' | 'interestingWords';
+
+type TestData = {
+  // ... existing properties ...
+  tagline: string;
+  excludedWords: string[];
+};
 
 const fieldDescriptions: Record<FormField, { description: string; questions: string[] }> = {
   attributes: {
@@ -51,6 +57,20 @@ const fieldDescriptions: Record<FormField, { description: string; questions: str
       'What words would someone google if they were looking for your type of products?'
     ]
   },
+  excludedWords: {
+    description: 'Words that should not be used in the generated company names.',
+    questions: [
+      'Are there any words that are overused in your industry?',
+      'Are there any words that have negative connotations for your brand?'
+    ]
+  },
+  interestingWords: {
+    description: 'Words that could be interesting to include or consider in the generated company names.',
+    questions: [
+      'What are some unique or compelling words related to your industry or brand?',
+      'Are there any words that capture the essence of your company\'s vision or values?'
+    ]
+  },
 };
 
 const industries = [
@@ -70,6 +90,8 @@ const CompanyNameGenerator = () => {
     stories: [''],
     vision: [''],
     tagline: [''],
+    excludedWords: [''],
+    interestingWords: [''],
   });
   const [industry, setIndustry] = useState('Software'); // Set default to 'Software'
   const [generatedNames, setGeneratedNames] = useState<Record<string, string[]>>({});
@@ -79,6 +101,9 @@ const CompanyNameGenerator = () => {
   const [openAIKey, setOpenAIKey] = useState('');
   const [isEnvironmentKeyAvailable, setIsEnvironmentKeyAvailable] = useState(true);
   const [rejectedNames, setRejectedNames] = useState<string[]>([]);
+  const [isGeneratingMore, setIsGeneratingMore] = useState(false);
+  const [domainAvailability, setDomainAvailability] = useState<Record<string, Record<string, boolean>>>({});
+  const [domainDebugInfo, setDomainDebugInfo] = useState<Record<string, any>>({});
 
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
@@ -137,7 +162,13 @@ const CompanyNameGenerator = () => {
           'Content-Type': 'application/json',
           'X-OpenAI-Key': !isEnvironmentKeyAvailable ? openAIKey : ''
         },
-        body: JSON.stringify({ ...formData, industry, rejectedNames }),
+        body: JSON.stringify({ 
+          ...formData, 
+          industry, 
+          rejectedNames,
+          existingNames: isGeneratingMore ? generatedNames : {},
+          generateMore: isGeneratingMore
+        }),
       });
       
       if (!response.ok) {
@@ -159,7 +190,18 @@ const CompanyNameGenerator = () => {
 
       if (data.names && typeof data.names === 'object') {
         console.log('Generated Names:', data.names);
-        setGeneratedNames(data.names);
+        if (isGeneratingMore) {
+          setGeneratedNames(prevNames => {
+            const updatedNames = { ...prevNames };
+            Object.entries(data.names).forEach(([category, newNames]) => {
+              updatedNames[category] = [...(updatedNames[category] || []), ...(newNames as string[])];
+            });
+            return updatedNames;
+          });
+        } else {
+          setGeneratedNames(data.names);
+        }
+        setIsGeneratingMore(true);
       } else {
         console.error('Unexpected response format:', data);
         setGeneratedNames({});
@@ -184,6 +226,8 @@ const CompanyNameGenerator = () => {
       stories: testData.stories,
       vision: testData.vision,
       tagline: testData.tagline,
+      excludedWords: testData.excludedWords,
+      interestingWords: testData.interestingWords,
     });
   };
 
@@ -222,6 +266,24 @@ const CompanyNameGenerator = () => {
     </VStack>
   );
 
+  const checkDomainAvailability = async (name: string) => {
+    try {
+      const response = await fetch('/api/check-domain', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      });
+      const data = await response.json();
+      setDomainAvailability(prev => ({
+        ...prev,
+        [name]: Object.fromEntries(Object.entries(data).map(([domain, info]) => [domain, (info as any).isAvailable]))
+      }));
+      setDomainDebugInfo(prev => ({ ...prev, [name]: data }));
+    } catch (error) {
+      console.error('Error checking domain availability:', error);
+    }
+  };
+
   const renderName = (name: string, index: number, category: string) => (
     <ListItem 
       key={index}
@@ -232,27 +294,71 @@ const CompanyNameGenerator = () => {
       border="1px solid"
       borderColor={useColorModeValue('gray.200', 'gray.600')}
     >
-      <HStack spacing={4} alignItems="center" justifyContent="space-between">
-        <Text fontSize="lg" flex={1}>{name}</Text>
-        <HStack spacing={2}>
-          <IconButton
-            aria-label="Like name"
-            icon={<FaThumbsUp />}
-            size="md"
-            fontSize="20px"
-            colorScheme="green"
-            onClick={() => console.log(`Liked: ${name}`)}
-          />
-          <IconButton
-            aria-label="Dislike name"
-            icon={<FaThumbsDown />}
-            size="md"
-            fontSize="20px"
-            colorScheme="red"
-            onClick={() => handleNameRejection(name, category)}
-          />
+      <VStack align="stretch" spacing={2}>
+        <HStack spacing={4} alignItems="center" justifyContent="space-between">
+          <Text fontSize="lg" flex={1}>{name}</Text>
+          <HStack spacing={2}>
+            {domainAvailability[name] && (
+              <HStack>
+                {['.com', '.ai', '.io'].map(domain => (
+                  <Tooltip key={domain} label={`${name}${domain} is ${domainAvailability[name][domain] ? 'potentially available' : 'likely taken'}`}>
+                    <Box>
+                      {domainAvailability[name][domain] ? (
+                        <FaCheckCircle color="green" />
+                      ) : (
+                        <FaTimesCircle color="red" />
+                      )}
+                      <Text fontSize="xs">{domain}</Text>
+                    </Box>
+                  </Tooltip>
+                ))}
+              </HStack>
+            )}
+            <IconButton
+              aria-label="Check domain"
+              icon={<FaGlobe />}
+              size="md"
+              fontSize="20px"
+              colorScheme="blue"
+              onClick={() => checkDomainAvailability(name)}
+            />
+            <IconButton
+              aria-label="Dislike name"
+              icon={<FaThumbsDown />}
+              size="md"
+              fontSize="20px"
+              colorScheme="red"
+              onClick={() => handleNameRejection(name, category)}
+            />
+          </HStack>
         </HStack>
-      </HStack>
+        {domainDebugInfo[name] && (
+          <Accordion allowToggle>
+            <AccordionItem>
+              <h2>
+                <AccordionButton>
+                  <Box flex="1" textAlign="left">
+                    Domain Check Debug Info
+                  </Box>
+                  <AccordionIcon />
+                </AccordionButton>
+              </h2>
+              <AccordionPanel pb={4}>
+                <VStack align="stretch" spacing={2}>
+                  {Object.entries(domainDebugInfo[name]).map(([domain, info]) => (
+                    <Box key={domain}>
+                      <Text fontWeight="bold">{domain}</Text>
+                      <Text>Status: {(info as any).statusCode}</Text>
+                      <Text>Is Potentially Available: {String((info as any).isAvailable)}</Text>
+                      <Text>Error: {(info as any).error || 'None'}</Text>
+                    </Box>
+                  ))}
+                </VStack>
+              </AccordionPanel>
+            </AccordionItem>
+          </Accordion>
+        )}
+      </VStack>
     </ListItem>
   );
 
@@ -307,8 +413,19 @@ const CompanyNameGenerator = () => {
       <Box>
         {renderInputs('tagline', 'Tagline')}
       </Box>
-      <Button onClick={generateNames} isLoading={isLoading} colorScheme="blue" size="lg">
-        Generate Names
+      <Box>
+        {renderInputs('excludedWords', 'Excluded Words')}
+      </Box>
+      <Box>
+        {renderInputs('interestingWords', 'Interesting Words')}
+      </Box>
+      <Button 
+        onClick={generateNames} 
+        isLoading={isLoading} 
+        colorScheme="blue" 
+        size="lg"
+      >
+        {isGeneratingMore ? "Generate More Names" : "Generate Names"}
       </Button>
       {Object.keys(generatedNames).length > 0 && (
         <>
