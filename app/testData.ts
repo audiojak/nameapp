@@ -36,14 +36,12 @@ export const testData = {
     "software",
     "engineer",
     "developer",
-    "product",
-    "team",
-    "company",
-    "startup",
-    "tech",
+    "Topic",
+    "Flow",
   ],
   interestingWords: [
-    "finch",
     "engage",
+    "360",
+    "feedback",
   ]
 };
